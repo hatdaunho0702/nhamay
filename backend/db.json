@@ -92,7 +92,7 @@
         },
         "admin": {
             "employeeId": "admin",
-            "password": "admin",
+            "password": "admin123",
             "name": "Admin System",
             "role": "Admin",
             "department": "Phòng Quản trị",
