@@ -137,13 +137,33 @@ const initialData = {
     credentials: {} // Key: credentialId, Value: { employeeId, publicKey, counter }
 };
 
-// Initialize database file if it doesn't exist
-if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 4), "utf8");
+let memoryDb = null;
+
+// Fallback to /tmp/db.json if the current directory is read-only (e.g. Vercel)
+try {
+    if (!fs.existsSync(DB_FILE)) {
+        fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 4), "utf8");
+    } else {
+        // Test write permission by reading and writing back
+        const data = fs.readFileSync(DB_FILE, "utf8");
+        fs.writeFileSync(DB_FILE, data, "utf8");
+    }
+} catch (e) {
+    console.warn("Current directory is read-only, falling back to /tmp/db.json:", e.message);
+    DB_FILE = path.join("/tmp", "db.json");
+    if (!fs.existsSync(DB_FILE)) {
+        try {
+            fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 4), "utf8");
+        } catch (err) {
+            console.error("Failed to write to /tmp/db.json, using in-memory database:", err.message);
+            memoryDb = JSON.parse(JSON.stringify(initialData));
+        }
+    }
 }
 
 function readDb() {
     try {
+        if (memoryDb) return memoryDb;
         const data = fs.readFileSync(DB_FILE, "utf8");
         const parsed = JSON.parse(data);
         // Ensure admin account exists in database
@@ -163,20 +183,32 @@ function readDb() {
                 workLocation: "Văn phòng NBC",
                 status: "Đang làm việc",
             };
-            fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 4), "utf8");
+            try {
+                fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 4), "utf8");
+            } catch (wErr) {
+                console.error("Failed to write admin to file, using memory fallback:", wErr.message);
+            }
         }
         return parsed;
     } catch (error) {
         console.error("Error reading database file, resetting to initial data:", error);
-        return initialData;
+        if (!memoryDb) {
+            memoryDb = JSON.parse(JSON.stringify(initialData));
+        }
+        return memoryDb;
     }
 }
 
 function writeDb(data) {
     try {
+        if (memoryDb) {
+            memoryDb = data;
+            return;
+        }
         fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 4), "utf8");
     } catch (error) {
-        console.error("Error writing database file:", error);
+        console.error("Error writing database file, falling back to memory:", error);
+        memoryDb = data;
     }
 }
 
