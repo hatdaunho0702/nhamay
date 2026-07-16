@@ -1,10 +1,39 @@
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc, getDocs, collection, deleteDoc } from "firebase/firestore";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDjcZpFjc51LWcOUL6w8ebsMiR0zGs_8F8",
+    authDomain: "cuahangdienmay-9e28c.firebaseapp.com",
+    projectId: "cuahangdienmay-9e28c",
+    storageBucket: "cuahangdienmay-9e28c.firebasestorage.app",
+    messagingSenderId: "965631598853",
+    appId: "1:965631598853:web:3f969b3f7cd47186b1576c",
+    measurementId: "G-0K34KWCB96"
+};
+
+// Initialize Firebase
+let app;
+let firestore;
+let useFirebase = false;
+
+try {
+    app = initializeApp(firebaseConfig);
+    firestore = getFirestore(app);
+    useFirebase = true;
+    console.log("Firebase initialized successfully");
+} catch (err) {
+    console.error("Failed to initialize Firebase, falling back to local file/memory:", err.message);
+}
+
+// Local File / Memory Fallback
 let DB_FILE = path.join(__dirname, "db.json");
+let memoryDb = null;
 
 const initialData = {
     employees: {
@@ -134,28 +163,22 @@ const initialData = {
             }
         ]
     },
-    credentials: {} // Key: credentialId, Value: { employeeId, publicKey, counter }
+    credentials: {}
 };
 
-let memoryDb = null;
-
-// Fallback to /tmp/db.json if the current directory is read-only (e.g. Vercel)
 try {
     if (!fs.existsSync(DB_FILE)) {
         fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 4), "utf8");
     } else {
-        // Test write permission by reading and writing back
         const data = fs.readFileSync(DB_FILE, "utf8");
         fs.writeFileSync(DB_FILE, data, "utf8");
     }
 } catch (e) {
-    console.warn("Current directory is read-only, falling back to /tmp/db.json:", e.message);
     DB_FILE = path.join("/tmp", "db.json");
     if (!fs.existsSync(DB_FILE)) {
         try {
             fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 4), "utf8");
         } catch (err) {
-            console.error("Failed to write to /tmp/db.json, using in-memory database:", err.message);
             memoryDb = JSON.parse(JSON.stringify(initialData));
         }
     }
@@ -166,32 +189,14 @@ function readDb() {
         if (memoryDb) return memoryDb;
         const data = fs.readFileSync(DB_FILE, "utf8");
         const parsed = JSON.parse(data);
-        // Ensure admin account exists in database
         if (parsed && parsed.employees && !parsed.employees["admin"]) {
-            parsed.employees["admin"] = {
-                employeeId: "admin",
-                password: "admin",
-                name: "Admin System",
-                role: "Admin",
-                department: "Phòng Quản trị",
-                avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=256&q=80",
-                dob: "01/01/1985",
-                gender: "Nam",
-                email: "admin@nbc.com.vn",
-                phone: "0900 000 000",
-                joinDate: "01/01/2015",
-                workLocation: "Văn phòng NBC",
-                status: "Đang làm việc",
-            };
+            parsed.employees["admin"] = initialData.employees["admin"];
             try {
                 fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 4), "utf8");
-            } catch (wErr) {
-                console.error("Failed to write admin to file, using memory fallback:", wErr.message);
-            }
+            } catch (wErr) { }
         }
         return parsed;
     } catch (error) {
-        console.error("Error reading database file, resetting to initial data:", error);
         if (!memoryDb) {
             memoryDb = JSON.parse(JSON.stringify(initialData));
         }
@@ -207,22 +212,93 @@ function writeDb(data) {
         }
         fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 4), "utf8");
     } catch (error) {
-        console.error("Error writing database file, falling back to memory:", error);
         memoryDb = data;
     }
 }
 
+// Seed Firestore with initial data if empty
+async function seedFirestore() {
+    if (!useFirebase) return;
+    try {
+        const snapshot = await getDocs(collection(firestore, "employees"));
+        if (snapshot.empty) {
+            console.log("Seeding initial data to Firestore...");
+            for (const [id, emp] of Object.entries(initialData.employees)) {
+                await setDoc(doc(firestore, "employees", id), emp);
+            }
+            for (const [id, reqs] of Object.entries(initialData.requests)) {
+                await setDoc(doc(firestore, "requests", id), { list: reqs });
+            }
+            console.log("Seeding completed successfully");
+        }
+    } catch (err) {
+        console.error("Failed to seed Firestore:", err.message);
+    }
+}
+
+seedFirestore();
+
 export const db = {
-    getEmployees: () => {
+    getEmployees: async () => {
+        if (useFirebase) {
+            try {
+                const snapshot = await getDocs(collection(firestore, "employees"));
+                const employees = {};
+                snapshot.forEach(doc => {
+                    employees[doc.id] = doc.data();
+                });
+                return employees;
+            } catch (err) {
+                console.error("Firebase getEmployees failed, falling back:", err.message);
+            }
+        }
         return readDb().employees;
     },
-    getEmployee: (employeeId) => {
+    getEmployee: async (employeeId) => {
+        if (useFirebase) {
+            try {
+                const docSnap = await getDoc(doc(firestore, "employees", employeeId));
+                return docSnap.exists() ? docSnap.data() : null;
+            } catch (err) {
+                console.error("Firebase getEmployee failed, falling back:", err.message);
+            }
+        }
         return readDb().employees[employeeId];
     },
-    getRequests: (employeeId) => {
+    getRequests: async (employeeId) => {
+        if (useFirebase) {
+            try {
+                const docSnap = await getDoc(doc(firestore, "requests", employeeId));
+                if (docSnap.exists()) {
+                    return docSnap.data().list || [];
+                } else {
+                    const defaultReqs = [
+                        {
+                            id: 1,
+                            type: "Nghỉ phép năm",
+                            details: "Từ 26/05/2025 đến 28/05/2025",
+                            reason: "Nghỉ phép năm",
+                            status: "Chờ duyệt",
+                            createdAt: "20/05/2025",
+                        },
+                        {
+                            id: 2,
+                            type: "Làm thêm giờ",
+                            details: "Ngày 18/05/2025 (Chủ nhật), Thời gian: 2.0 giờ",
+                            reason: "Tăng ca sản xuất",
+                            status: "Đã duyệt",
+                            createdAt: "16/05/2025",
+                        }
+                    ];
+                    await setDoc(doc(firestore, "requests", employeeId), { list: defaultReqs });
+                    return defaultReqs;
+                }
+            } catch (err) {
+                console.error("Firebase getRequests failed, falling back:", err.message);
+            }
+        }
         const data = readDb();
         if (!data.requests[employeeId]) {
-            // Initialize empty requests for new employee
             data.requests[employeeId] = [
                 {
                     id: 1,
@@ -245,7 +321,21 @@ export const db = {
         }
         return data.requests[employeeId];
     },
-    addRequest: (employeeId, request) => {
+    addRequest: async (employeeId, request) => {
+        if (useFirebase) {
+            try {
+                const docSnap = await getDoc(doc(firestore, "requests", employeeId));
+                let list = [];
+                if (docSnap.exists()) {
+                    list = docSnap.data().list || [];
+                }
+                list.unshift(request);
+                await setDoc(doc(firestore, "requests", employeeId), { list });
+                return;
+            } catch (err) {
+                console.error("Firebase addRequest failed, falling back:", err.message);
+            }
+        }
         const data = readDb();
         if (!data.requests[employeeId]) {
             data.requests[employeeId] = [];
@@ -253,13 +343,41 @@ export const db = {
         data.requests[employeeId].unshift(request);
         writeDb(data);
     },
-    getCredentials: () => {
+    getCredentials: async () => {
+        if (useFirebase) {
+            try {
+                const snapshot = await getDocs(collection(firestore, "credentials"));
+                const credentials = {};
+                snapshot.forEach(doc => {
+                    credentials[doc.id] = doc.data();
+                });
+                return credentials;
+            } catch (err) {
+                console.error("Firebase getCredentials failed, falling back:", err.message);
+            }
+        }
         return readDb().credentials || {};
     },
-    getCredential: (credentialId) => {
+    getCredential: async (credentialId) => {
+        if (useFirebase) {
+            try {
+                const docSnap = await getDoc(doc(firestore, "credentials", credentialId));
+                return docSnap.exists() ? docSnap.data() : null;
+            } catch (err) {
+                console.error("Firebase getCredential failed, falling back:", err.message);
+            }
+        }
         return (readDb().credentials || {})[credentialId];
     },
-    saveCredential: (credentialId, credentialInfo) => {
+    saveCredential: async (credentialId, credentialInfo) => {
+        if (useFirebase) {
+            try {
+                await setDoc(doc(firestore, "credentials", credentialId), credentialInfo);
+                return;
+            } catch (err) {
+                console.error("Firebase saveCredential failed, falling back:", err.message);
+            }
+        }
         const data = readDb();
         if (!data.credentials) {
             data.credentials = {};
@@ -267,7 +385,20 @@ export const db = {
         data.credentials[credentialId] = credentialInfo;
         writeDb(data);
     },
-    deleteCredentialsForEmployee: (employeeId) => {
+    deleteCredentialsForEmployee: async (employeeId) => {
+        if (useFirebase) {
+            try {
+                const snapshot = await getDocs(collection(firestore, "credentials"));
+                snapshot.forEach(async (d) => {
+                    if (d.data().employeeId === employeeId) {
+                        await deleteDoc(doc(firestore, "credentials", d.id));
+                    }
+                });
+                return;
+            } catch (err) {
+                console.error("Firebase deleteCredentialsForEmployee failed, falling back:", err.message);
+            }
+        }
         const data = readDb();
         if (data.credentials) {
             Object.keys(data.credentials).forEach(id => {
@@ -278,7 +409,23 @@ export const db = {
             writeDb(data);
         }
     },
-    saveEmployee: (employeeId, employeeData) => {
+    saveEmployee: async (employeeId, employeeData) => {
+        if (useFirebase) {
+            try {
+                const docRef = doc(firestore, "employees", employeeId);
+                const docSnap = await getDoc(docRef);
+                const existing = docSnap.exists() ? docSnap.data() : {};
+                const updated = {
+                    ...existing,
+                    ...employeeData,
+                    employeeId
+                };
+                await setDoc(docRef, updated);
+                return;
+            } catch (err) {
+                console.error("Firebase saveEmployee failed, falling back:", err.message);
+            }
+        }
         const data = readDb();
         data.employees[employeeId] = {
             ...data.employees[employeeId],
@@ -287,7 +434,22 @@ export const db = {
         };
         writeDb(data);
     },
-    deleteEmployee: (employeeId) => {
+    deleteEmployee: async (employeeId) => {
+        if (useFirebase) {
+            try {
+                await deleteDoc(doc(firestore, "employees", employeeId));
+                await deleteDoc(doc(firestore, "requests", employeeId));
+                const snapshot = await getDocs(collection(firestore, "credentials"));
+                snapshot.forEach(async (d) => {
+                    if (d.data().employeeId === employeeId) {
+                        await deleteDoc(doc(firestore, "credentials", d.id));
+                    }
+                });
+                return;
+            } catch (err) {
+                console.error("Firebase deleteEmployee failed, falling back:", err.message);
+            }
+        }
         const data = readDb();
         delete data.employees[employeeId];
         delete data.requests[employeeId];

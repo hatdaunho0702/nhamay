@@ -71,12 +71,12 @@ const getEmployeeId = (req) => {
  * POST /api/login
  * Handles employee authentication.
  */
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
     const { employeeId, password } = req.body;
 
     console.log("Login attempt for:", employeeId);
 
-    const employee = db.getEmployee(employeeId);
+    const employee = await db.getEmployee(employeeId);
     if (employee && employee.password === password) {
         // Sinh session token không trạng thái bảo mật
         const sessionToken = generateSessionToken(employee.employeeId);
@@ -103,12 +103,12 @@ app.post("/api/login", (req, res) => {
  * POST /api/qr-login
  * Handles employee authentication via QR code.
  */
-app.post("/api/qr-login", (req, res) => {
+app.post("/api/qr-login", async (req, res) => {
     const { employeeId } = req.body;
 
     console.log("QR Login attempt for:", employeeId);
 
-    const employee = db.getEmployee(employeeId);
+    const employee = await db.getEmployee(employeeId);
     if (employee) {
         // Sinh session token không trạng thái bảo mật
         const sessionToken = generateSessionToken(employee.employeeId);
@@ -143,9 +143,9 @@ const activeChallenges = {};
  * POST /api/auth/webauthn/register-challenge
  * Generates a registration challenge for the logged-in user.
  */
-app.post("/api/auth/webauthn/register-challenge", requireSession, (req, res) => {
+app.post("/api/auth/webauthn/register-challenge", requireSession, async (req, res) => {
     const empId = req.employeeId;
-    const employee = db.getEmployee(empId);
+    const employee = await db.getEmployee(empId);
     if (!employee) {
         return res.status(404).json({ success: false, message: "Không tìm thấy nhân viên" });
     }
@@ -250,7 +250,7 @@ app.post("/api/auth/webauthn/register-verify", requireSession, async (req, res) 
         const signedCredential = { payload: credPayload, signature: credSignature };
 
         // Save credential to database
-        db.saveCredential(credential.id, credentialInfo);
+        await db.saveCredential(credential.id, credentialInfo);
 
         console.log(`Registered biometric credential ${credential.id} for employee ${empId}`);
 
@@ -269,9 +269,9 @@ app.post("/api/auth/webauthn/register-verify", requireSession, async (req, res) 
  * POST /api/auth/webauthn/unregister
  * Deletes the credential for the logged-in user.
  */
-app.post("/api/auth/webauthn/unregister", requireSession, (req, res) => {
+app.post("/api/auth/webauthn/unregister", requireSession, async (req, res) => {
     const empId = req.employeeId;
-    db.deleteCredentialsForEmployee(empId);
+    await db.deleteCredentialsForEmployee(empId);
 
     console.log(`Unregistered biometric credentials for employee ${empId}`);
 
@@ -345,7 +345,7 @@ app.post("/api/auth/webauthn/verify", async (req, res) => {
     }
 
     // Look up credential in database
-    let savedCred = db.getCredential(credential.id);
+    let savedCred = await db.getCredential(credential.id);
 
     // Fallback to signedCredential if database doesn't have it (for backward compatibility)
     if (!savedCred && signedCredential && signedCredential.payload && signedCredential.signature) {
@@ -362,7 +362,7 @@ app.post("/api/auth/webauthn/verify", async (req, res) => {
         });
     }
 
-    const employee = db.getEmployee(savedCred.employeeId);
+    const employee = await db.getEmployee(savedCred.employeeId);
     if (!employee) {
         return res.status(404).json({
             success: false,
@@ -397,7 +397,7 @@ app.post("/api/auth/webauthn/verify", async (req, res) => {
             ...savedCred,
             counter: newCounter,
         };
-        db.saveCredential(credential.id, updatedCredInfo);
+        await db.saveCredential(credential.id, updatedCredInfo);
 
         const updatedPayload = JSON.stringify(updatedCredInfo);
         const updatedSignature = crypto.createHmac("sha256", SESSION_SECRET).update(updatedPayload).digest("hex");
@@ -429,9 +429,9 @@ app.post("/api/auth/webauthn/verify", async (req, res) => {
  * GET /api/auth/webauthn/status
  * Helper endpoint to check if the current user has biometric enrolled.
  */
-app.get("/api/auth/webauthn/status", requireSession, (req, res) => {
+app.get("/api/auth/webauthn/status", requireSession, async (req, res) => {
     const empId = req.employeeId;
-    const creds = Object.values(db.getCredentials()).filter(c => c.employeeId === empId);
+    const creds = Object.values(await db.getCredentials()).filter(c => c.employeeId === empId);
     return res.status(200).json({
         success: true,
         hasBiometricEnrolled: creds.length > 0,
@@ -458,11 +458,11 @@ app.post("/api/forgot-password", (req, res) => {
 /**
  * GET /api/dashboard
  */
-app.get("/api/dashboard", (req, res) => {
+app.get("/api/dashboard", async (req, res) => {
     const empId = getEmployeeId(req);
     console.log("Fetching dashboard data for:", empId);
 
-    const employee = db.getEmployee(empId) || db.getEmployee("NBC012345");
+    const employee = (await db.getEmployee(empId)) || (await db.getEmployee("NBC012345"));
 
     // Return mock dashboard data matching the UI design
     return res.status(200).json({
@@ -657,19 +657,19 @@ app.get("/api/payslips/:id", (req, res) => {
 /**
  * GET /api/requests
  */
-app.get("/api/requests", (req, res) => {
+app.get("/api/requests", async (req, res) => {
     const empId = getEmployeeId(req);
     console.log("Fetching requests list for:", empId);
     return res.status(200).json({
         success: true,
-        requests: db.getRequests(empId),
+        requests: await db.getRequests(empId),
     });
 });
 
 /**
  * POST /api/requests
  */
-app.post("/api/requests", (req, res) => {
+app.post("/api/requests", async (req, res) => {
     const empId = getEmployeeId(req);
     const { type, details, reason } = req.body;
     console.log("Creating new request for:", empId, { type, details, reason });
@@ -682,7 +682,7 @@ app.post("/api/requests", (req, res) => {
     }
 
     const newRequest = {
-        id: db.getRequests(empId).length + 1,
+        id: (await db.getRequests(empId)).length + 1,
         type,
         details,
         reason,
@@ -690,7 +690,7 @@ app.post("/api/requests", (req, res) => {
         createdAt: new Date().toLocaleDateString("vi-VN"),
     };
 
-    db.addRequest(empId, newRequest);
+    await db.addRequest(empId, newRequest);
 
     return res.status(201).json({
         success: true,
@@ -700,7 +700,7 @@ app.post("/api/requests", (req, res) => {
 });
 
 // Middleware to require admin role
-function requireAdmin(req, res, next) {
+async function requireAdmin(req, res, next) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return res.status(401).json({ success: false, message: "Không có quyền truy cập, vui lòng đăng nhập lại" });
@@ -710,7 +710,7 @@ function requireAdmin(req, res, next) {
     if (!session) {
         return res.status(401).json({ success: false, message: "Phiên làm việc không hợp lệ hoặc đã hết hạn" });
     }
-    const employee = db.getEmployee(session.employeeId);
+    const employee = await db.getEmployee(session.employeeId);
     if (!employee || employee.role !== "Admin") {
         return res.status(403).json({ success: false, message: "Bạn không có quyền thực hiện hành động này" });
     }
@@ -723,8 +723,8 @@ function requireAdmin(req, res, next) {
 /**
  * GET /api/admin/employees
  */
-app.get("/api/admin/employees", requireAdmin, (req, res) => {
-    const employees = db.getEmployees();
+app.get("/api/admin/employees", requireAdmin, async (req, res) => {
+    const employees = await db.getEmployees();
     const list = Object.values(employees).map(({ password, ...rest }) => rest);
     return res.status(200).json({
         success: true,
@@ -735,12 +735,12 @@ app.get("/api/admin/employees", requireAdmin, (req, res) => {
 /**
  * POST /api/admin/employees
  */
-app.post("/api/admin/employees", requireAdmin, (req, res) => {
+app.post("/api/admin/employees", requireAdmin, async (req, res) => {
     const { employeeId, password, name, role, department, dob, gender, email, phone, joinDate, workLocation, status } = req.body;
     if (!employeeId || !password || !name || !role) {
         return res.status(400).json({ success: false, message: "Vui lòng điền đầy đủ các thông tin bắt buộc" });
     }
-    if (db.getEmployee(employeeId)) {
+    if (await db.getEmployee(employeeId)) {
         return res.status(400).json({ success: false, message: "Mã nhân viên đã tồn tại" });
     }
     const newEmployee = {
@@ -758,7 +758,7 @@ app.post("/api/admin/employees", requireAdmin, (req, res) => {
         workLocation: workLocation || "Nhà máy NBC",
         status: status || "Đang làm việc",
     };
-    db.saveEmployee(employeeId, newEmployee);
+    await db.saveEmployee(employeeId, newEmployee);
     return res.status(201).json({
         success: true,
         message: "Thêm nhân viên thành công!",
@@ -769,15 +769,15 @@ app.post("/api/admin/employees", requireAdmin, (req, res) => {
 /**
  * PUT /api/admin/employees/:id
  */
-app.put("/api/admin/employees/:id", requireAdmin, (req, res) => {
+app.put("/api/admin/employees/:id", requireAdmin, async (req, res) => {
     const { id } = req.params;
-    const employee = db.getEmployee(id);
+    const employee = await db.getEmployee(id);
     if (!employee) {
         return res.status(404).json({ success: false, message: "Không tìm thấy nhân viên" });
     }
     const updatedData = { ...req.body };
     delete updatedData.employeeId;
-    db.saveEmployee(id, updatedData);
+    await db.saveEmployee(id, updatedData);
     return res.status(200).json({
         success: true,
         message: "Cập nhật nhân viên thành công!",
@@ -787,16 +787,16 @@ app.put("/api/admin/employees/:id", requireAdmin, (req, res) => {
 /**
  * DELETE /api/admin/employees/:id
  */
-app.delete("/api/admin/employees/:id", requireAdmin, (req, res) => {
+app.delete("/api/admin/employees/:id", requireAdmin, async (req, res) => {
     const { id } = req.params;
     if (id === req.employeeId) {
         return res.status(400).json({ success: false, message: "Không thể tự xóa tài khoản của chính mình" });
     }
-    const employee = db.getEmployee(id);
+    const employee = await db.getEmployee(id);
     if (!employee) {
         return res.status(404).json({ success: false, message: "Không tìm thấy nhân viên" });
     }
-    db.deleteEmployee(id);
+    await db.deleteEmployee(id);
     return res.status(200).json({
         success: true,
         message: "Xóa nhân viên thành công!",
@@ -804,7 +804,7 @@ app.delete("/api/admin/employees/:id", requireAdmin, (req, res) => {
 });
 
 // Start Express server
-if (require.main === module) {
+if (process.argv[1] && process.argv[1].endsWith("server.js")) {
     app.listen(PORT, () => console.log(`Server chạy ở port ${PORT}`));
 }
-module.exports = app;
+export default app;
