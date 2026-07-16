@@ -1,23 +1,26 @@
 {
-    "version": 2,
-    "builds": [
-        {
-            "src": "package.json",
-            "use": "@vercel/static"
+    "services": {
+        "frontend": {
+            "root": ".",
+            "framework": "vite"
         },
-        {
-            "src": "backend/server.js",
-            "use": "@vercel/node"
+        "backend": {
+            "root": "backend/",
+            "framework": "express"
         }
-    ],
-    "routes": [
+    },
+    "rewrites": [
         {
-            "src": "/api/(.*)",
-            "dest": "backend/server.js"
+            "source": "/api/(.*)",
+            "destination": {
+                "service": "backend"
+            }
         },
         {
-            "src": "/(.*)",
-            "dest": "$1"
+            "source": "/(.*)",
+            "destination": {
+                "service": "frontend"
+            }
         }
     ]
 }
