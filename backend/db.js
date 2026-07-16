@@ -223,6 +223,20 @@ function writeDb(data) {
     }
 }
 
+const TIMEOUT_MS = 1500;
+
+function withTimeout(promise) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Firestore operation timeout")), TIMEOUT_MS))
+    ]);
+}
+
+function handleFirebaseError(err, operationName) {
+    console.error(`Firebase ${operationName} failed, disabling Firebase:`, err.message);
+    useFirebase = false;
+}
+
 // Seed Firestore with initial data if empty
 async function seedFirestore() {
     if (!useFirebase) return;
@@ -259,14 +273,14 @@ export const db = {
     getEmployees: async () => {
         if (useFirebase) {
             try {
-                const snapshot = await getDocs(collection(firestore, "employees"));
+                const snapshot = await withTimeout(getDocs(collection(firestore, "employees")));
                 const employees = {};
                 snapshot.forEach(doc => {
                     employees[doc.id] = doc.data();
                 });
                 return employees;
             } catch (err) {
-                console.error("Firebase getEmployees failed, falling back:", err.message);
+                handleFirebaseError(err, "getEmployees");
             }
         }
         return readDb().employees;
@@ -274,10 +288,10 @@ export const db = {
     getEmployee: async (employeeId) => {
         if (useFirebase) {
             try {
-                const docSnap = await getDoc(doc(firestore, "employees", employeeId));
+                const docSnap = await withTimeout(getDoc(doc(firestore, "employees", employeeId)));
                 return docSnap.exists() ? docSnap.data() : null;
             } catch (err) {
-                console.error("Firebase getEmployee failed, falling back:", err.message);
+                handleFirebaseError(err, "getEmployee");
             }
         }
         return readDb().employees[employeeId];
@@ -285,7 +299,7 @@ export const db = {
     getRequests: async (employeeId) => {
         if (useFirebase) {
             try {
-                const docSnap = await getDoc(doc(firestore, "requests", employeeId));
+                const docSnap = await withTimeout(getDoc(doc(firestore, "requests", employeeId)));
                 if (docSnap.exists()) {
                     return docSnap.data().list || [];
                 } else {
@@ -307,11 +321,11 @@ export const db = {
                             createdAt: "16/05/2025",
                         }
                     ];
-                    await setDoc(doc(firestore, "requests", employeeId), { list: defaultReqs });
+                    await withTimeout(setDoc(doc(firestore, "requests", employeeId), { list: defaultReqs }));
                     return defaultReqs;
                 }
             } catch (err) {
-                console.error("Firebase getRequests failed, falling back:", err.message);
+                handleFirebaseError(err, "getRequests");
             }
         }
         const data = readDb();
@@ -341,16 +355,16 @@ export const db = {
     addRequest: async (employeeId, request) => {
         if (useFirebase) {
             try {
-                const docSnap = await getDoc(doc(firestore, "requests", employeeId));
+                const docSnap = await withTimeout(getDoc(doc(firestore, "requests", employeeId)));
                 let list = [];
                 if (docSnap.exists()) {
                     list = docSnap.data().list || [];
                 }
                 list.unshift(request);
-                await setDoc(doc(firestore, "requests", employeeId), { list });
+                await withTimeout(setDoc(doc(firestore, "requests", employeeId), { list }));
                 return;
             } catch (err) {
-                console.error("Firebase addRequest failed, falling back:", err.message);
+                handleFirebaseError(err, "addRequest");
             }
         }
         const data = readDb();
@@ -363,14 +377,14 @@ export const db = {
     getCredentials: async () => {
         if (useFirebase) {
             try {
-                const snapshot = await getDocs(collection(firestore, "credentials"));
+                const snapshot = await withTimeout(getDocs(collection(firestore, "credentials")));
                 const credentials = {};
                 snapshot.forEach(doc => {
                     credentials[doc.id] = doc.data();
                 });
                 return credentials;
             } catch (err) {
-                console.error("Firebase getCredentials failed, falling back:", err.message);
+                handleFirebaseError(err, "getCredentials");
             }
         }
         return readDb().credentials || {};
@@ -378,10 +392,10 @@ export const db = {
     getCredential: async (credentialId) => {
         if (useFirebase) {
             try {
-                const docSnap = await getDoc(doc(firestore, "credentials", credentialId));
+                const docSnap = await withTimeout(getDoc(doc(firestore, "credentials", credentialId)));
                 return docSnap.exists() ? docSnap.data() : null;
             } catch (err) {
-                console.error("Firebase getCredential failed, falling back:", err.message);
+                handleFirebaseError(err, "getCredential");
             }
         }
         return (readDb().credentials || {})[credentialId];
@@ -389,10 +403,10 @@ export const db = {
     saveCredential: async (credentialId, credentialInfo) => {
         if (useFirebase) {
             try {
-                await setDoc(doc(firestore, "credentials", credentialId), credentialInfo);
+                await withTimeout(setDoc(doc(firestore, "credentials", credentialId), credentialInfo));
                 return;
             } catch (err) {
-                console.error("Firebase saveCredential failed, falling back:", err.message);
+                handleFirebaseError(err, "saveCredential");
             }
         }
         const data = readDb();
@@ -405,15 +419,15 @@ export const db = {
     deleteCredentialsForEmployee: async (employeeId) => {
         if (useFirebase) {
             try {
-                const snapshot = await getDocs(collection(firestore, "credentials"));
+                const snapshot = await withTimeout(getDocs(collection(firestore, "credentials")));
                 snapshot.forEach(async (d) => {
                     if (d.data().employeeId === employeeId) {
-                        await deleteDoc(doc(firestore, "credentials", d.id));
+                        await withTimeout(deleteDoc(doc(firestore, "credentials", d.id)));
                     }
                 });
                 return;
             } catch (err) {
-                console.error("Firebase deleteCredentialsForEmployee failed, falling back:", err.message);
+                handleFirebaseError(err, "deleteCredentialsForEmployee");
             }
         }
         const data = readDb();
@@ -430,17 +444,17 @@ export const db = {
         if (useFirebase) {
             try {
                 const docRef = doc(firestore, "employees", employeeId);
-                const docSnap = await getDoc(docRef);
+                const docSnap = await withTimeout(getDoc(docRef));
                 const existing = docSnap.exists() ? docSnap.data() : {};
                 const updated = {
                     ...existing,
                     ...employeeData,
                     employeeId
                 };
-                await setDoc(docRef, updated);
+                await withTimeout(setDoc(docRef, updated));
                 return;
             } catch (err) {
-                console.error("Firebase saveEmployee failed, falling back:", err.message);
+                handleFirebaseError(err, "saveEmployee");
             }
         }
         const data = readDb();
@@ -454,17 +468,17 @@ export const db = {
     deleteEmployee: async (employeeId) => {
         if (useFirebase) {
             try {
-                await deleteDoc(doc(firestore, "employees", employeeId));
-                await deleteDoc(doc(firestore, "requests", employeeId));
-                const snapshot = await getDocs(collection(firestore, "credentials"));
+                await withTimeout(deleteDoc(doc(firestore, "employees", employeeId)));
+                await withTimeout(deleteDoc(doc(firestore, "requests", employeeId)));
+                const snapshot = await withTimeout(getDocs(collection(firestore, "credentials")));
                 snapshot.forEach(async (d) => {
                     if (d.data().employeeId === employeeId) {
-                        await deleteDoc(doc(firestore, "credentials", d.id));
+                        await withTimeout(deleteDoc(doc(firestore, "credentials", d.id)));
                     }
                 });
                 return;
             } catch (err) {
-                console.error("Firebase deleteEmployee failed, falling back:", err.message);
+                handleFirebaseError(err, "deleteEmployee");
             }
         }
         const data = readDb();
