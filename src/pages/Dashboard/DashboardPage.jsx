@@ -174,7 +174,7 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
                 throw new Error(challengeData.message || "Không thể lấy challenge đăng ký từ server");
             }
 
-            const { publicKey } = challengeData;
+            const { publicKey, sessionId } = challengeData;
 
             // Chuyển đổi các trường ArrayBuffer từ base64url
             publicKey.challenge = base64urlToBuffer(publicKey.challenge);
@@ -204,7 +204,7 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`,
                 },
-                body: JSON.stringify({ credential: credentialJSON }),
+                body: JSON.stringify({ credential: credentialJSON, sessionId }),
             });
             const verifyData = await verifyRes.json();
             if (!verifyData.success) {
@@ -213,6 +213,9 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
 
             setHasBiometricEnrolled(true);
             localStorage.setItem("nbc_biometric_enrolled", "true");
+            if (verifyData.signedCredential) {
+                localStorage.setItem("nbc_signed_credential", JSON.stringify(verifyData.signedCredential));
+            }
             alert("Đăng ký sinh trắc học thành công!");
         } catch (err) {
             console.error("Biometric registration error:", err);
@@ -244,6 +247,7 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
 
             setHasBiometricEnrolled(false);
             localStorage.setItem("nbc_biometric_enrolled", "false");
+            localStorage.removeItem("nbc_signed_credential");
             alert("Đã tắt đăng nhập bằng sinh trắc học thành công!");
         } catch (err) {
             console.error("Biometric unregistration error:", err);

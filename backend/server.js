@@ -10,8 +10,29 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ================= SESSION MANAGEMENT =================
-// Key: sessionToken (string), Value: { employeeId, createdAt }
-const activeSessions = {};
+const SESSION_SECRET = process.env.SESSION_SECRET || "nbc-secret-key-1234567890";
+
+// Generate a stateless session token (HMAC-SHA256)
+function generateSessionToken(employeeId) {
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    const payload = `${employeeId}.${expiresAt}`;
+    const signature = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+    return `${payload}.${signature}`;
+}
+
+// Verify a stateless session token
+function verifySessionToken(token) {
+    if (!token) return null;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const [employeeId, expiresAtStr, signature] = parts;
+    const expiresAt = parseInt(expiresAtStr, 10);
+    if (isNaN(expiresAt) || Date.now() > expiresAt) return null;
+    const payload = `${employeeId}.${expiresAt}`;
+    const expectedSignature = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+    if (signature !== expectedSignature) return null;
+    return { employeeId };
+}
 
 // Middleware to require a valid session token
 function requireSession(req, res, next) {
@@ -20,7 +41,7 @@ function requireSession(req, res, next) {
         return res.status(401).json({ success: false, message: "Không có quyền truy cập, vui lòng đăng nhập lại" });
     }
     const token = authHeader.split(" ")[1];
-    const session = activeSessions[token];
+    const session = verifySessionToken(token);
     if (!session) {
         return res.status(401).json({ success: false, message: "Phiên làm việc không hợp lệ hoặc đã hết hạn" });
     }
@@ -199,9 +220,8 @@ app.post("/api/login", (req, res) => {
 
     const employee = employees[employeeId];
     if (employee && employee.password === password) {
-        // Sinh session token ngẫu nhiên bảo mật
-        const sessionToken = crypto.randomBytes(24).toString("hex");
-        activeSessions[sessionToken] = { employeeId: employee.employeeId, createdAt: Date.now() };
+        // Sinh session token không trạng thái bảo mật
+        const sessionToken = generateSessionToken(employee.employeeId);
 
         return res.status(200).json({
             success: true,
@@ -232,9 +252,8 @@ app.post("/api/qr-login", (req, res) => {
 
     const employee = employees[employeeId];
     if (employee) {
-        // Sinh session token ngẫu nhiên bảo mật
-        const sessionToken = crypto.randomBytes(24).toString("hex");
-        activeSessions[sessionToken] = { employeeId: employee.employeeId, createdAt: Date.now() };
+        // Sinh session token không trạng thái bảo mật
+        const sessionToken = generateSessionToken(employee.employeeId);
 
         return res.status(200).json({
             success: true,
@@ -273,25 +292,25 @@ app.post("/api/auth/webauthn/register-challenge", requireSession, (req, res) => 
         return res.status(404).json({ success: false, message: "Không tìm thấy nhân viên" });
     }
 
-    // Cơ chế dọn rác: xóa các challenge đã hết hạn (quá 60 giây)
-    const now = Date.now();
-    Object.keys(activeChallenges).forEach(key => {
-        if (activeChallenges[key] && activeChallenges[key].createdAt && (now - activeChallenges[key].createdAt > 60000)) {
-            delete activeChallenges[key];
-        }
-    });
+    const host = req.headers.host ? req.headers.host.split(":")[0] : "localhost";
 
     // Generate a random challenge (base64url encoded)
     const challenge = Buffer.from(Math.random().toString(36).substring(2) + Date.now().toString()).toString("base64url");
-    activeChallenges[empId] = { challenge, createdAt: now };
+
+    // Sign the challenge to make it stateless
+    const expiresAt = Date.now() + 60000; // 1 minute
+    const payload = `${challenge}.${expiresAt}.${empId}`;
+    const signature = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+    const sessionId = `${payload}.${signature}`;
 
     return res.status(200).json({
         success: true,
+        sessionId,
         publicKey: {
             challenge,
             rp: {
                 name: "NBC HR System",
-                id: req.hostname === "localhost" ? "localhost" : req.hostname,
+                id: host,
             },
             user: {
                 id: Buffer.from(empId).toString("base64url"),
@@ -320,30 +339,37 @@ app.post("/api/auth/webauthn/register-challenge", requireSession, (req, res) => 
  */
 app.post("/api/auth/webauthn/register-verify", requireSession, async (req, res) => {
     const empId = req.employeeId;
-    const { credential } = req.body;
+    const { credential, sessionId } = req.body;
 
-    if (!credential || !credential.id) {
+    if (!credential || !credential.id || !sessionId) {
         return res.status(400).json({ success: false, message: "Dữ liệu xác thực không hợp lệ" });
     }
 
-    // Check challenge
-    const challengeEntry = activeChallenges[empId];
-    if (!challengeEntry || (Date.now() - challengeEntry.createdAt > 60000)) {
-        delete activeChallenges[empId]; // Dọn dẹp nếu hết hạn
-        return res.status(400).json({ success: false, message: "Yêu cầu đăng ký đã hết hạn hoặc không tồn tại" });
+    // Verify stateless sessionId challenge
+    const parts = sessionId.split(".");
+    if (parts.length !== 4) {
+        return res.status(400).json({ success: false, message: "Phiên đăng ký không hợp lệ" });
     }
-    const savedChallenge = challengeEntry.challenge;
-    delete activeChallenges[empId]; // Consume challenge (chỉ dùng 1 lần)
+    const [savedChallenge, expiresAtStr, challengeEmpId, signature] = parts;
+    const expiresAt = parseInt(expiresAtStr, 10);
+    if (isNaN(expiresAt) || Date.now() > expiresAt || challengeEmpId !== empId) {
+        return res.status(400).json({ success: false, message: "Yêu cầu đăng ký đã hết hạn hoặc không khớp" });
+    }
+    const payload = `${savedChallenge}.${expiresAt}.${challengeEmpId}`;
+    const expectedSignature = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+    if (signature !== expectedSignature) {
+        return res.status(400).json({ success: false, message: "Chữ ký phiên đăng ký không hợp lệ" });
+    }
 
     try {
-        const rpId = req.hostname === "localhost" ? "localhost" : req.hostname;
-        const origin = req.headers.origin || `http://${rpId}:5173`;
+        const host = req.headers.host ? req.headers.host.split(":")[0] : "localhost";
+        const origin = req.headers.origin || `https://${host}`;
 
         const verification = await verifyRegistrationResponse({
             response: credential,
             expectedChallenge: savedChallenge,
             expectedOrigin: origin,
-            expectedRPID: rpId,
+            expectedRPID: host,
             requireUserVerification: true,
         });
 
@@ -354,27 +380,27 @@ app.post("/api/auth/webauthn/register-verify", requireSession, async (req, res) 
         const { registrationInfo } = verification;
         const { credentialPublicKey, counter } = registrationInfo;
 
-        // Save credential in-memory
-        credentialsDb[credential.id] = {
-            employeeId: empId,
+        // Generate a signed credential token for the client to store statelessly
+        const credentialInfo = {
+            id: credential.id,
             publicKey: Buffer.from(credentialPublicKey).toString("base64url"),
             counter,
+            employeeId: empId,
         };
+        const credPayload = JSON.stringify(credentialInfo);
+        const credSignature = crypto.createHmac("sha256", SESSION_SECRET).update(credPayload).digest("hex");
+        const signedCredential = { payload: credPayload, signature: credSignature };
 
-        if (!employeeCredentials[empId]) {
-            employeeCredentials[empId] = [];
-        }
-        employeeCredentials[empId].push(credential.id);
-
-        console.log(`Registered biometric credential ${credential.id} for employee ${empId}`);
+        console.log(`Registered biometric credential ${credential.id} statelessly for employee ${empId}`);
 
         return res.status(200).json({
             success: true,
             message: "Đăng ký sinh trắc học thành công!",
+            signedCredential,
         });
     } catch (error) {
         console.error("Registration verification error:", error);
-        return res.status(400).json({ success: false, message: "Xác minh đăng ký sinh trắc học thất bại" });
+        return res.status(500).json({ success: false, message: "Lỗi hệ thống khi xác minh đăng ký" });
     }
 });
 
@@ -442,28 +468,42 @@ app.post("/api/auth/webauthn/challenge", (req, res) => {
  * Verifies the login assertion and authenticates the user.
  */
 app.post("/api/auth/webauthn/verify", async (req, res) => {
-    const { credential, sessionId } = req.body;
+    const { credential, sessionId, signedCredential } = req.body;
 
     if (!credential || !credential.id || !sessionId) {
         return res.status(400).json({ success: false, message: "Dữ liệu xác thực không hợp lệ" });
     }
 
-    // Verify challenge
-    const challengeEntry = activeChallenges[sessionId];
-    if (!challengeEntry || (Date.now() - challengeEntry.createdAt > (challengeEntry.ttl || 60000))) {
-        if (sessionId) delete activeChallenges[sessionId]; // Dọn dẹp nếu hết hạn
+    // Verify stateless sessionId challenge
+    const parts = sessionId.split(".");
+    if (parts.length !== 3) {
+        return res.status(400).json({ success: false, message: "Phiên xác thực không hợp lệ" });
+    }
+    const [savedChallenge, expiresAtStr, signature] = parts;
+    const expiresAt = parseInt(expiresAtStr, 10);
+    if (isNaN(expiresAt) || Date.now() > expiresAt) {
         return res.status(400).json({ success: false, message: "Phiên xác thực đã hết hạn, vui lòng thử lại" });
     }
-    const savedChallenge = challengeEntry.challenge;
-    delete activeChallenges[sessionId]; // Consume challenge (chỉ dùng 1 lần)
+    const payload = `${savedChallenge}.${expiresAt}`;
+    const expectedSignature = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+    if (signature !== expectedSignature) {
+        return res.status(400).json({ success: false, message: "Chữ ký phiên xác thực không hợp lệ" });
+    }
 
-    // Find the credential in our database
-    const savedCred = credentialsDb[credential.id];
-    if (!savedCred) {
+    // Verify signedCredential
+    if (!signedCredential || !signedCredential.payload || !signedCredential.signature) {
         return res.status(401).json({
             success: false,
             message: "Thiết bị sinh trắc học này chưa được đăng ký hoặc không khớp với tài khoản nào",
         });
+    }
+    const expectedCredSig = crypto.createHmac("sha256", SESSION_SECRET).update(signedCredential.payload).digest("hex");
+    if (signedCredential.signature !== expectedCredSig) {
+        return res.status(401).json({ success: false, message: "Chữ ký thiết bị không hợp lệ" });
+    }
+    const savedCred = JSON.parse(signedCredential.payload);
+    if (savedCred.id !== credential.id) {
+        return res.status(401).json({ success: false, message: "Thiết bị sinh trắc học không khớp" });
     }
 
     const employee = employees[savedCred.employeeId];
@@ -475,16 +515,16 @@ app.post("/api/auth/webauthn/verify", async (req, res) => {
     }
 
     try {
-        const rpId = req.hostname === "localhost" ? "localhost" : req.hostname;
-        const origin = req.headers.origin || `http://${rpId}:5173`;
+        const host = req.headers.host ? req.headers.host.split(":")[0] : "localhost";
+        const origin = req.headers.origin || `https://${host}`;
 
         const verification = await verifyAuthenticationResponse({
             response: credential,
             expectedChallenge: savedChallenge,
             expectedOrigin: origin,
-            expectedRPID: rpId,
+            expectedRPID: host,
             authenticator: {
-                credentialID: Buffer.from(credential.id, "base64url"),
+                credentialID: Buffer.from(savedCred.id, "base64url"),
                 credentialPublicKey: Buffer.from(savedCred.publicKey, "base64url"),
                 counter: savedCred.counter,
             },
@@ -495,12 +535,18 @@ app.post("/api/auth/webauthn/verify", async (req, res) => {
             return res.status(401).json({ success: false, message: "Xác thực sinh trắc học thất bại" });
         }
 
-        // Cập nhật counter mới chống replay
-        savedCred.counter = verification.authenticationInfo.newCounter;
+        // Cập nhật counter mới và sinh signedCredential mới
+        const newCounter = verification.authenticationInfo.newCounter;
+        const updatedCredInfo = {
+            ...savedCred,
+            counter: newCounter,
+        };
+        const updatedPayload = JSON.stringify(updatedCredInfo);
+        const updatedSignature = crypto.createHmac("sha256", SESSION_SECRET).update(updatedPayload).digest("hex");
+        const newSignedCredential = { payload: updatedPayload, signature: updatedSignature };
 
-        // Sinh session token ngẫu nhiên bảo mật
-        const sessionToken = crypto.randomBytes(24).toString("hex");
-        activeSessions[sessionToken] = { employeeId: employee.employeeId, createdAt: Date.now() };
+        // Sinh session token không trạng thái bảo mật
+        const sessionToken = generateSessionToken(employee.employeeId);
 
         console.log(`Biometric login successful for employee ${employee.employeeId}`);
 
@@ -508,6 +554,7 @@ app.post("/api/auth/webauthn/verify", async (req, res) => {
             success: true,
             message: "Đăng nhập bằng sinh trắc học thành công!",
             sessionToken,
+            signedCredential: newSignedCredential,
             user: {
                 employeeId: employee.employeeId,
                 name: employee.name,

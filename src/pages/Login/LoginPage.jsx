@@ -165,15 +165,23 @@ export default function LoginPage({ onLogin, onForgotPassword, hasBiometricEnrol
           };
 
           // 3. Xác minh credential với server
+          const signedCredentialStr = localStorage.getItem("nbc_signed_credential");
+          const signedCredential = signedCredentialStr ? JSON.parse(signedCredentialStr) : null;
+
           const verifyRes = await fetch(`${apiUrl}/api/auth/webauthn/verify`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ credential: credentialJSON, sessionId }),
+            body: JSON.stringify({ credential: credentialJSON, sessionId, signedCredential }),
             signal,
           });
           const verifyData = await verifyRes.json();
           if (!verifyRes.ok || !verifyData.success) {
             throw new Error(verifyData.message || "Xác thực sinh trắc học thất bại");
+          }
+
+          // Cập nhật signedCredential mới từ server
+          if (verifyData.signedCredential) {
+            localStorage.setItem("nbc_signed_credential", JSON.stringify(verifyData.signedCredential));
           }
 
           // 4. Gọi callback để xử lý session và chuyển hướng
