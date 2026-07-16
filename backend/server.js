@@ -796,6 +796,7 @@ app.post("/api/requests", (req, res) => {
 });
 
 // Start Express server
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+    app.listen(PORT, () => console.log(`Server chạy ở port ${PORT}`));
+}
+module.exports = app;
