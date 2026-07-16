@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import crypto from "crypto";
 import { verifyRegistrationResponse, verifyAuthenticationResponse } from "@simplewebauthn/server";
+import { db } from "./db.js";
 
 dotenv.config();
 
@@ -59,149 +60,6 @@ app.use((req, res, next) => {
     next();
 });
 
-// ================= MOCK DATABASE =================
-
-const employees = {
-    "NBC012345": {
-        employeeId: "NBC012345",
-        password: "password123",
-        name: "Nguyễn Văn An",
-        role: "Nhân viên Sản xuất",
-        department: "Phòng Sản xuất - Line 2",
-        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80",
-        dob: "12/05/1992",
-        gender: "Nam",
-        email: "nguyenvanan@nbc.com.vn",
-        phone: "0987 654 321",
-        joinDate: "15/08/2020",
-        workLocation: "Nhà máy NBC - KCN VSIP II",
-        status: "Đang làm việc",
-    },
-    "NBC001": {
-        employeeId: "NBC001",
-        password: "12345",
-        name: "Nguyễn Văn Một",
-        role: "Nhân viên Kỹ thuật",
-        department: "Phòng Kỹ thuật - Line 1",
-        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&q=80",
-        dob: "01/01/1990",
-        gender: "Nam",
-        email: "nguyenvanmot@nbc.com.vn",
-        phone: "0901 234 561",
-        joinDate: "10/01/2019",
-        workLocation: "Nhà máy NBC - KCN VSIP II",
-        status: "Đang làm việc",
-    },
-    "NBC002": {
-        employeeId: "NBC002",
-        password: "12345",
-        name: "Trần Thị Hai",
-        role: "Nhân viên Kiểm hàng",
-        department: "Phòng QC - Line 2",
-        avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=256&q=80",
-        dob: "02/02/1995",
-        gender: "Nữ",
-        email: "tranthihai@nbc.com.vn",
-        phone: "0901 234 562",
-        joinDate: "20/03/2021",
-        workLocation: "Nhà máy NBC - KCN VSIP II",
-        status: "Đang làm việc",
-    },
-    "NBC003": {
-        employeeId: "NBC003",
-        password: "12345",
-        name: "Lê Văn Ba",
-        role: "Nhân viên Vận hành",
-        department: "Phòng Sản xuất - Line 3",
-        avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=256&q=80",
-        dob: "03/03/1993",
-        gender: "Nam",
-        email: "levanba@nbc.com.vn",
-        phone: "0901 234 563",
-        joinDate: "15/06/2022",
-        workLocation: "Nhà máy NBC - KCN VSIP II",
-        status: "Đang làm việc",
-    },
-    "NBC004": {
-        employeeId: "NBC004",
-        password: "12345",
-        name: "Phạm Thị Bốn",
-        role: "Nhân viên Đóng gói",
-        department: "Phòng Đóng gói - Line 4",
-        avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=256&q=80",
-        dob: "04/04/1997",
-        gender: "Nữ",
-        email: "phamthibon@nbc.com.vn",
-        phone: "0901 234 564",
-        joinDate: "01/11/2023",
-        workLocation: "Nhà máy NBC - KCN VSIP II",
-        status: "Đang làm việc",
-    },
-    "NBC005": {
-        employeeId: "NBC005",
-        password: "12345",
-        name: "Hoàng Văn Năm",
-        role: "Trưởng nhóm Sản xuất",
-        department: "Phòng Sản xuất - Line 5",
-        avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=256&q=80",
-        dob: "05/05/1988",
-        gender: "Nam",
-        email: "hoangvannam@nbc.com.vn",
-        phone: "0901 234 565",
-        joinDate: "12/04/2018",
-        workLocation: "Nhà máy NBC - KCN VSIP II",
-        status: "Đang làm việc",
-    }
-};
-
-// Mock database for employee requests, keyed by employeeId
-const mockRequestsByEmployee = {
-    "NBC012345": [
-        {
-            id: 1,
-            type: "Nghỉ phép năm",
-            details: "Từ 26/05/2025 đến 28/05/2025",
-            reason: "Nghỉ phép năm",
-            status: "Chờ duyệt",
-            createdAt: "20/05/2025",
-        },
-        {
-            id: 2,
-            type: "Làm thêm giờ",
-            details: "Ngày 18/05/2025 (Chủ nhật), Thời gian: 2.0 giờ",
-            reason: "Tăng ca sản xuất",
-            status: "Đã duyệt",
-            createdAt: "16/05/2025",
-        }
-    ]
-};
-
-// Helper to get requests for an employee
-const getRequestsForEmployee = (employeeId) => {
-    if (!mockRequestsByEmployee[employeeId]) {
-        // Initialize with some default requests for demo
-        mockRequestsByEmployee[employeeId] = [
-            {
-                id: 1,
-                type: "Nghỉ phép năm",
-                details: "Từ 26/05/2025 đến 28/05/2025",
-                reason: "Nghỉ phép năm",
-                status: "Chờ duyệt",
-                createdAt: "20/05/2025",
-            },
-            {
-                id: 2,
-                type: "Làm thêm giờ",
-                details: "Ngày 18/05/2025 (Chủ nhật), Thời gian: 2.0 giờ",
-                reason: "Tăng ca sản xuất",
-                status: "Đã duyệt",
-                createdAt: "16/05/2025",
-            }
-        ];
-    }
-    return mockRequestsByEmployee[employeeId];
-};
-
 // Helper to get employee ID from request headers (legacy)
 const getEmployeeId = (req) => {
     return req.headers["x-employee-id"] || "NBC012345";
@@ -218,7 +76,7 @@ app.post("/api/login", (req, res) => {
 
     console.log("Login attempt for:", employeeId);
 
-    const employee = employees[employeeId];
+    const employee = db.getEmployee(employeeId);
     if (employee && employee.password === password) {
         // Sinh session token không trạng thái bảo mật
         const sessionToken = generateSessionToken(employee.employeeId);
@@ -250,7 +108,7 @@ app.post("/api/qr-login", (req, res) => {
 
     console.log("QR Login attempt for:", employeeId);
 
-    const employee = employees[employeeId];
+    const employee = db.getEmployee(employeeId);
     if (employee) {
         // Sinh session token không trạng thái bảo mật
         const sessionToken = generateSessionToken(employee.employeeId);
@@ -287,7 +145,7 @@ const activeChallenges = {};
  */
 app.post("/api/auth/webauthn/register-challenge", requireSession, (req, res) => {
     const empId = req.employeeId;
-    const employee = employees[empId];
+    const employee = db.getEmployee(empId);
     if (!employee) {
         return res.status(404).json({ success: false, message: "Không tìm thấy nhân viên" });
     }
@@ -391,7 +249,10 @@ app.post("/api/auth/webauthn/register-verify", requireSession, async (req, res) 
         const credSignature = crypto.createHmac("sha256", SESSION_SECRET).update(credPayload).digest("hex");
         const signedCredential = { payload: credPayload, signature: credSignature };
 
-        console.log(`Registered biometric credential ${credential.id} statelessly for employee ${empId}`);
+        // Save credential to database
+        db.saveCredential(credential.id, credentialInfo);
+
+        console.log(`Registered biometric credential ${credential.id} for employee ${empId}`);
 
         return res.status(200).json({
             success: true,
@@ -410,14 +271,7 @@ app.post("/api/auth/webauthn/register-verify", requireSession, async (req, res) 
  */
 app.post("/api/auth/webauthn/unregister", requireSession, (req, res) => {
     const empId = req.employeeId;
-    const credIds = employeeCredentials[empId];
-
-    if (credIds && credIds.length > 0) {
-        credIds.forEach(id => {
-            delete credentialsDb[id];
-        });
-        delete employeeCredentials[empId];
-    }
+    db.deleteCredentialsForEmployee(empId);
 
     console.log(`Unregistered biometric credentials for employee ${empId}`);
 
@@ -490,23 +344,25 @@ app.post("/api/auth/webauthn/verify", async (req, res) => {
         return res.status(400).json({ success: false, message: "Chữ ký phiên xác thực không hợp lệ" });
     }
 
-    // Verify signedCredential
-    if (!signedCredential || !signedCredential.payload || !signedCredential.signature) {
+    // Look up credential in database
+    let savedCred = db.getCredential(credential.id);
+
+    // Fallback to signedCredential if database doesn't have it (for backward compatibility)
+    if (!savedCred && signedCredential && signedCredential.payload && signedCredential.signature) {
+        const expectedCredSig = crypto.createHmac("sha256", SESSION_SECRET).update(signedCredential.payload).digest("hex");
+        if (signedCredential.signature === expectedCredSig) {
+            savedCred = JSON.parse(signedCredential.payload);
+        }
+    }
+
+    if (!savedCred) {
         return res.status(401).json({
             success: false,
             message: "Thiết bị sinh trắc học này chưa được đăng ký hoặc không khớp với tài khoản nào",
         });
     }
-    const expectedCredSig = crypto.createHmac("sha256", SESSION_SECRET).update(signedCredential.payload).digest("hex");
-    if (signedCredential.signature !== expectedCredSig) {
-        return res.status(401).json({ success: false, message: "Chữ ký thiết bị không hợp lệ" });
-    }
-    const savedCred = JSON.parse(signedCredential.payload);
-    if (savedCred.id !== credential.id) {
-        return res.status(401).json({ success: false, message: "Thiết bị sinh trắc học không khớp" });
-    }
 
-    const employee = employees[savedCred.employeeId];
+    const employee = db.getEmployee(savedCred.employeeId);
     if (!employee) {
         return res.status(404).json({
             success: false,
@@ -541,6 +397,8 @@ app.post("/api/auth/webauthn/verify", async (req, res) => {
             ...savedCred,
             counter: newCounter,
         };
+        db.saveCredential(credential.id, updatedCredInfo);
+
         const updatedPayload = JSON.stringify(updatedCredInfo);
         const updatedSignature = crypto.createHmac("sha256", SESSION_SECRET).update(updatedPayload).digest("hex");
         const newSignedCredential = { payload: updatedPayload, signature: updatedSignature };
@@ -573,7 +431,7 @@ app.post("/api/auth/webauthn/verify", async (req, res) => {
  */
 app.get("/api/auth/webauthn/status", requireSession, (req, res) => {
     const empId = req.employeeId;
-    const creds = employeeCredentials[empId] || [];
+    const creds = Object.values(db.getCredentials()).filter(c => c.employeeId === empId);
     return res.status(200).json({
         success: true,
         hasBiometricEnrolled: creds.length > 0,
@@ -604,7 +462,7 @@ app.get("/api/dashboard", (req, res) => {
     const empId = getEmployeeId(req);
     console.log("Fetching dashboard data for:", empId);
 
-    const employee = employees[empId] || employees["NBC012345"];
+    const employee = db.getEmployee(empId) || db.getEmployee("NBC012345");
 
     // Return mock dashboard data matching the UI design
     return res.status(200).json({
@@ -804,7 +662,7 @@ app.get("/api/requests", (req, res) => {
     console.log("Fetching requests list for:", empId);
     return res.status(200).json({
         success: true,
-        requests: getRequestsForEmployee(empId),
+        requests: db.getRequests(empId),
     });
 });
 
@@ -823,9 +681,8 @@ app.post("/api/requests", (req, res) => {
         });
     }
 
-    const employeeRequests = getRequestsForEmployee(empId);
     const newRequest = {
-        id: employeeRequests.length + 1,
+        id: db.getRequests(empId).length + 1,
         type,
         details,
         reason,
@@ -833,7 +690,7 @@ app.post("/api/requests", (req, res) => {
         createdAt: new Date().toLocaleDateString("vi-VN"),
     };
 
-    employeeRequests.unshift(newRequest);
+    db.addRequest(empId, newRequest);
 
     return res.status(201).json({
         success: true,

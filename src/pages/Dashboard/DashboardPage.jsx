@@ -133,9 +133,17 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
 
     const checkBiometricStatus = async () => {
         try {
-            const hasCred = !!localStorage.getItem("nbc_signed_credential");
-            setHasBiometricEnrolled(hasCred);
-            localStorage.setItem("nbc_biometric_enrolled", hasCred ? "true" : "false");
+            const token = localStorage.getItem("sessionToken");
+            const res = await fetch("/api/auth/webauthn/status", {
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                }
+            });
+            const data = await res.json();
+            if (data.success) {
+                setHasBiometricEnrolled(data.hasBiometricEnrolled);
+                localStorage.setItem("nbc_biometric_enrolled", data.hasBiometricEnrolled ? "true" : "false");
+            }
         } catch (err) {
             console.error("Error checking biometric status:", err);
         }
