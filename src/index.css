@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --animate-scan: scan 2.5s linear infinite;
+
+  @keyframes scan {
+
+    0%,
+    100% {
+      top: 0%;
+    }
+
+    50% {
+      top: 100%;
+    }
+  }
+}
