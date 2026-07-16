@@ -129,7 +129,7 @@ const initialData = {
         },
         "admin": {
             employeeId: "admin",
-            password: "admin",
+            password: "admin123",
             name: "Admin System",
             role: "Admin",
             department: "Phòng Quản trị",
@@ -189,11 +189,18 @@ function readDb() {
         if (memoryDb) return memoryDb;
         const data = fs.readFileSync(DB_FILE, "utf8");
         const parsed = JSON.parse(data);
-        if (parsed && parsed.employees && !parsed.employees["admin"]) {
-            parsed.employees["admin"] = initialData.employees["admin"];
-            try {
-                fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 4), "utf8");
-            } catch (wErr) { }
+        if (parsed && parsed.employees) {
+            if (!parsed.employees["admin"]) {
+                parsed.employees["admin"] = initialData.employees["admin"];
+                try {
+                    fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 4), "utf8");
+                } catch (wErr) { }
+            } else if (parsed.employees["admin"].password === "admin") {
+                parsed.employees["admin"].password = "admin123";
+                try {
+                    fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 4), "utf8");
+                } catch (wErr) { }
+            }
         }
         return parsed;
     } catch (error) {
@@ -230,9 +237,19 @@ async function seedFirestore() {
                 await setDoc(doc(firestore, "requests", id), { list: reqs });
             }
             console.log("Seeding completed successfully");
+        } else {
+            // Ensure admin password is admin123 in Firestore
+            const adminDoc = await getDoc(doc(firestore, "employees", "admin"));
+            if (adminDoc.exists() && adminDoc.data().password === "admin") {
+                console.log("Updating admin password to admin123 in Firestore...");
+                await setDoc(doc(firestore, "employees", "admin"), {
+                    ...adminDoc.data(),
+                    password: "admin123"
+                });
+            }
         }
     } catch (err) {
-        console.error("Failed to seed Firestore:", err.message);
+        console.error("Failed to seed/update Firestore:", err.message);
     }
 }
 
