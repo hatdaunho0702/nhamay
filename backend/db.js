@@ -274,6 +274,17 @@ export const db = {
         if (useFirebase) {
             try {
                 const snapshot = await withTimeout(getDocs(collection(firestore, "employees")));
+                if (snapshot.empty) {
+                    console.log("Firestore employees collection is empty, seeding dynamically...");
+                    for (const [id, emp] of Object.entries(initialData.employees)) {
+                        await withTimeout(setDoc(doc(firestore, "employees", id), emp));
+                    }
+                    for (const [id, reqs] of Object.entries(initialData.requests)) {
+                        await withTimeout(setDoc(doc(firestore, "requests", id), { list: reqs }));
+                    }
+                    console.log("Dynamic seeding completed successfully");
+                    return initialData.employees;
+                }
                 const employees = {};
                 snapshot.forEach(doc => {
                     employees[doc.id] = doc.data();
@@ -289,7 +300,14 @@ export const db = {
         if (useFirebase) {
             try {
                 const docSnap = await withTimeout(getDoc(doc(firestore, "employees", employeeId)));
-                return docSnap.exists() ? docSnap.data() : null;
+                if (docSnap.exists()) {
+                    return docSnap.data();
+                }
+                // Fallback for admin if not found in Firestore
+                if (employeeId === "admin") {
+                    return initialData.employees["admin"];
+                }
+                return null;
             } catch (err) {
                 handleFirebaseError(err, "getEmployee");
             }
