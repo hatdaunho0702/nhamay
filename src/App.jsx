@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import LoginPage from "./pages/Login/LoginPage";
 import DashboardPage from "./pages/Dashboard/DashboardPage";
+import AdminPage from "./pages/Admin/AdminPage";
 
 function App() {
   // ================= STATE MANAGEMENT =================
@@ -46,7 +47,11 @@ function App() {
       try {
         const parsedUser = JSON.parse(savedUser);
         setUser(parsedUser);
-        fetchDashboardData(parsedUser.employeeId).finally(() => setLoading(false));
+        if (parsedUser.role !== "Admin") {
+          fetchDashboardData(parsedUser.employeeId).finally(() => setLoading(false));
+        } else {
+          setLoading(false);
+        }
       } catch (e) {
         console.error("Error parsing saved user:", e);
         localStorage.removeItem("user");
@@ -79,23 +84,25 @@ function App() {
         throw new Error(data.message || "Sai tài khoản hoặc mật khẩu");
       }
 
-      // Fetch dashboard data immediately after login with cache-busting
-      const dashboardResponse = await fetch(`/api/dashboard?t=${Date.now()}`, {
-        headers: {
-          "x-employee-id": data.user.employeeId,
-        },
-      });
-      const dashboardJson = await dashboardResponse.json();
-
-      if (!dashboardResponse.ok || !dashboardJson.success) {
-        throw new Error("Không thể tải dữ liệu bảng điều khiển");
-      }
-
       // Luôn lưu sessionToken cho phiên làm việc hiện tại
       localStorage.setItem("sessionToken", data.sessionToken);
 
-      setDashboardData(dashboardJson);
       setUser(data.user);
+
+      if (data.user.role !== "Admin") {
+        // Fetch dashboard data immediately after login with cache-busting
+        const dashboardResponse = await fetch(`/api/dashboard?t=${Date.now()}`, {
+          headers: {
+            "x-employee-id": data.user.employeeId,
+          },
+        });
+        const dashboardJson = await dashboardResponse.json();
+
+        if (!dashboardResponse.ok || !dashboardJson.success) {
+          throw new Error("Không thể tải dữ liệu bảng điều khiển");
+        }
+        setDashboardData(dashboardJson);
+      }
 
       if (remember) {
         localStorage.setItem("user", JSON.stringify(data.user));
@@ -152,22 +159,24 @@ function App() {
   const handleBiometricLogin = async (data) => {
     if (data.success && data.user) {
       try {
-        // Fetch dashboard data immediately after login with cache-busting
-        const dashboardResponse = await fetch(`/api/dashboard?t=${Date.now()}`, {
-          headers: {
-            "x-employee-id": data.user.employeeId,
-          },
-        });
-        const dashboardJson = await dashboardResponse.json();
-
-        if (!dashboardResponse.ok || !dashboardJson.success) {
-          throw new Error("Không thể tải dữ liệu bảng điều khiển");
-        }
-
         localStorage.setItem("sessionToken", data.sessionToken);
-        setDashboardData(dashboardJson);
         setUser(data.user);
         localStorage.setItem("user", JSON.stringify(data.user));
+
+        if (data.user.role !== "Admin") {
+          // Fetch dashboard data immediately after login with cache-busting
+          const dashboardResponse = await fetch(`/api/dashboard?t=${Date.now()}`, {
+            headers: {
+              "x-employee-id": data.user.employeeId,
+            },
+          });
+          const dashboardJson = await dashboardResponse.json();
+
+          if (!dashboardResponse.ok || !dashboardJson.success) {
+            throw new Error("Không thể tải dữ liệu bảng điều khiển");
+          }
+          setDashboardData(dashboardJson);
+        }
       } catch (error) {
         console.error("Biometric login post-processing error:", error);
         alert("Lỗi tải dữ liệu bảng điều khiển sau khi đăng nhập sinh trắc học");
@@ -183,6 +192,16 @@ function App() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="animate-spin rounded-full h-10 w-10 border-4 border-[#0f6e46] border-t-transparent"></div>
       </div>
+    );
+  }
+
+  // Render AdminPage if user is admin
+  if (user && user.role === "Admin") {
+    return (
+      <AdminPage
+        user={user}
+        onLogout={handleLogout}
+      />
     );
   }
 

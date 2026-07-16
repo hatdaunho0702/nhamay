@@ -699,6 +699,110 @@ app.post("/api/requests", (req, res) => {
     });
 });
 
+// Middleware to require admin role
+function requireAdmin(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ success: false, message: "Không có quyền truy cập, vui lòng đăng nhập lại" });
+    }
+    const token = authHeader.split(" ")[1];
+    const session = verifySessionToken(token);
+    if (!session) {
+        return res.status(401).json({ success: false, message: "Phiên làm việc không hợp lệ hoặc đã hết hạn" });
+    }
+    const employee = db.getEmployee(session.employeeId);
+    if (!employee || employee.role !== "Admin") {
+        return res.status(403).json({ success: false, message: "Bạn không có quyền thực hiện hành động này" });
+    }
+    req.employeeId = session.employeeId;
+    next();
+}
+
+// ================= ADMIN ENDPOINTS =================
+
+/**
+ * GET /api/admin/employees
+ */
+app.get("/api/admin/employees", requireAdmin, (req, res) => {
+    const employees = db.getEmployees();
+    const list = Object.values(employees).map(({ password, ...rest }) => rest);
+    return res.status(200).json({
+        success: true,
+        employees: list,
+    });
+});
+
+/**
+ * POST /api/admin/employees
+ */
+app.post("/api/admin/employees", requireAdmin, (req, res) => {
+    const { employeeId, password, name, role, department, dob, gender, email, phone, joinDate, workLocation, status } = req.body;
+    if (!employeeId || !password || !name || !role) {
+        return res.status(400).json({ success: false, message: "Vui lòng điền đầy đủ các thông tin bắt buộc" });
+    }
+    if (db.getEmployee(employeeId)) {
+        return res.status(400).json({ success: false, message: "Mã nhân viên đã tồn tại" });
+    }
+    const newEmployee = {
+        employeeId,
+        password,
+        name,
+        role,
+        department: department || "Chưa xếp phòng",
+        avatar: req.body.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=256&q=80",
+        dob: dob || "",
+        gender: gender || "Nam",
+        email: email || "",
+        phone: phone || "",
+        joinDate: joinDate || new Date().toLocaleDateString("vi-VN"),
+        workLocation: workLocation || "Nhà máy NBC",
+        status: status || "Đang làm việc",
+    };
+    db.saveEmployee(employeeId, newEmployee);
+    return res.status(201).json({
+        success: true,
+        message: "Thêm nhân viên thành công!",
+        employee: { employeeId, name, role, department }
+    });
+});
+
+/**
+ * PUT /api/admin/employees/:id
+ */
+app.put("/api/admin/employees/:id", requireAdmin, (req, res) => {
+    const { id } = req.params;
+    const employee = db.getEmployee(id);
+    if (!employee) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy nhân viên" });
+    }
+    const updatedData = { ...req.body };
+    delete updatedData.employeeId;
+    db.saveEmployee(id, updatedData);
+    return res.status(200).json({
+        success: true,
+        message: "Cập nhật nhân viên thành công!",
+    });
+});
+
+/**
+ * DELETE /api/admin/employees/:id
+ */
+app.delete("/api/admin/employees/:id", requireAdmin, (req, res) => {
+    const { id } = req.params;
+    if (id === req.employeeId) {
+        return res.status(400).json({ success: false, message: "Không thể tự xóa tài khoản của chính mình" });
+    }
+    const employee = db.getEmployee(id);
+    if (!employee) {
+        return res.status(404).json({ success: false, message: "Không tìm thấy nhân viên" });
+    }
+    db.deleteEmployee(id);
+    return res.status(200).json({
+        success: true,
+        message: "Xóa nhân viên thành công!",
+    });
+});
+
 // Start Express server
 if (require.main === module) {
     app.listen(PORT, () => console.log(`Server chạy ở port ${PORT}`));

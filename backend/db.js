@@ -97,6 +97,21 @@ const initialData = {
             joinDate: "12/04/2018",
             workLocation: "Nhà máy NBC - KCN VSIP II",
             status: "Đang làm việc",
+        },
+        "admin": {
+            employeeId: "admin",
+            password: "admin",
+            name: "Admin System",
+            role: "Admin",
+            department: "Phòng Quản trị",
+            avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=256&q=80",
+            dob: "01/01/1985",
+            gender: "Nam",
+            email: "admin@nbc.com.vn",
+            phone: "0900 000 000",
+            joinDate: "01/01/2015",
+            workLocation: "Văn phòng NBC",
+            status: "Đang làm việc",
         }
     },
     requests: {
@@ -130,7 +145,27 @@ if (!fs.existsSync(DB_FILE)) {
 function readDb() {
     try {
         const data = fs.readFileSync(DB_FILE, "utf8");
-        return JSON.parse(data);
+        const parsed = JSON.parse(data);
+        // Ensure admin account exists in database
+        if (parsed && parsed.employees && !parsed.employees["admin"]) {
+            parsed.employees["admin"] = {
+                employeeId: "admin",
+                password: "admin",
+                name: "Admin System",
+                role: "Admin",
+                department: "Phòng Quản trị",
+                avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=256&q=80",
+                dob: "01/01/1985",
+                gender: "Nam",
+                email: "admin@nbc.com.vn",
+                phone: "0900 000 000",
+                joinDate: "01/01/2015",
+                workLocation: "Văn phòng NBC",
+                status: "Đang làm việc",
+            };
+            fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 4), "utf8");
+        }
+        return parsed;
     } catch (error) {
         console.error("Error reading database file, resetting to initial data:", error);
         return initialData;
@@ -210,5 +245,27 @@ export const db = {
             });
             writeDb(data);
         }
+    },
+    saveEmployee: (employeeId, employeeData) => {
+        const data = readDb();
+        data.employees[employeeId] = {
+            ...data.employees[employeeId],
+            ...employeeData,
+            employeeId
+        };
+        writeDb(data);
+    },
+    deleteEmployee: (employeeId) => {
+        const data = readDb();
+        delete data.employees[employeeId];
+        delete data.requests[employeeId];
+        if (data.credentials) {
+            Object.keys(data.credentials).forEach(id => {
+                if (data.credentials[id].employeeId === employeeId) {
+                    delete data.credentials[id];
+                }
+            });
+        }
+        writeDb(data);
     }
 };
