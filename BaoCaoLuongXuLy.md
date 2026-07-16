@@ -106,3 +106,23 @@ Luồng này xử lý việc đăng ký (enrollment), hủy đăng ký (unenroll
 | **`backend/server.js`** | `app.post("/api/auth/webauthn/verify")` | **Xác thực đăng nhập**: Nhận credential từ client, đối chiếu credential ID trong `credentialsDb` để tìm ra `employeeId` tương ứng. Trả về thông tin user đăng nhập thành công. |
 | **`src/App.jsx`** | `handleBiometricLogin` | **Xử lý session**: Nhận dữ liệu phản hồi thành công từ `LoginPage`, gọi `fetchDashboardData()` để tải dữ liệu trang chủ, lưu thông tin user vào state và `localStorage`, sau đó tự động chuyển hướng vào Dashboard. |
 
+---
+
+## 7. LUỒNG QUẢN TRỊ VIÊN (ADMIN FLOW)
+
+Luồng này dành riêng cho tài khoản có vai trò `Admin` (ví dụ: tài khoản `admin` / `admin123`). Sau khi đăng nhập, hệ thống sẽ chuyển hướng Admin vào trang quản trị để thực hiện các thao tác CRUD nhân viên.
+
+### Các hàm & File xử lý:
+
+| File | Hàm / Hook | Vai trò & Xử lý |
+| :--- | :--- | :--- |
+| **`src/App.jsx`** | `useEffect` (Mount) & `handleLogin` | **Định tuyến vai trò**: Kiểm tra nếu `user.role === "Admin"`, bỏ qua việc tải dữ liệu Dashboard của nhân viên thường và hiển thị trực tiếp component `AdminPage`. |
+| **`src/pages/Admin/AdminPage.jsx`** | `AdminPage` (Render) | **Giao diện Quản trị**: Hiển thị danh sách nhân viên dưới dạng bảng, cung cấp thanh tìm kiếm theo tên/mã nhân viên và nút mở Modal thêm/sửa nhân viên. |
+| **`src/pages/Admin/AdminPage.jsx`** | `fetchEmployees` | **Tải danh sách**: Gửi yêu cầu `GET /api/admin/employees` kèm token xác thực để lấy toàn bộ danh sách nhân viên từ backend. |
+| **`src/pages/Admin/AdminPage.jsx`** | `handleSubmit` | **Thêm/Sửa nhân viên**: Gửi yêu cầu `POST /api/admin/employees` (khi thêm mới) hoặc `PUT /api/admin/employees/:id` (khi cập nhật) kèm thông tin nhân viên từ form. |
+| **`src/pages/Admin/AdminPage.jsx`** | `handleDelete` | **Xóa nhân viên**: Gửi yêu cầu `DELETE /api/admin/employees/:id` để xóa nhân viên khỏi hệ thống (không cho phép tự xóa tài khoản admin đang đăng nhập). |
+| **`backend/server.js`** | `requireAdmin` | **Middleware bảo vệ**: Xác thực token phiên làm việc và kiểm tra vai trò của người dùng. Chỉ cho phép tài khoản có `role === "Admin"` đi tiếp. |
+| **`backend/server.js`** | `GET /api/admin/employees` | **API lấy danh sách**: Trả về danh sách tất cả nhân viên trong cơ sở dữ liệu (đã ẩn mật khẩu để bảo mật). |
+| **`backend/server.js`** | `POST /api/admin/employees` | **API thêm mới**: Kiểm tra mã nhân viên trùng lặp, lưu thông tin nhân viên mới vào `db.json`. |
+| **`backend/server.js`** | `PUT /api/admin/employees/:id` | **API cập nhật**: Cập nhật thông tin chi tiết của nhân viên theo ID trong `db.json`. |
+| **`backend/server.js`** | `DELETE /api/admin/employees/:id` | **API xóa**: Xóa nhân viên khỏi `db.json`, đồng thời dọn dẹp các đơn từ và thiết bị sinh trắc học liên kết. |
