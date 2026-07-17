@@ -14,15 +14,22 @@ function App() {
    * Fetches dashboard overview data (employee profile, stats, announcements) from backend.
    * Uses cache-busting query parameter to prevent stale/cached responses.
    */
-  const fetchDashboardData = async (empId) => {
-    const id = empId || (user ? user.employeeId : null);
-    if (!id) return;
+  const fetchDashboardData = async () => {
+    const token = localStorage.getItem("sessionToken");
+    if (!token) {
+      handleLogout();
+      return;
+    }
     try {
       const response = await fetch(`/api/dashboard?t=${Date.now()}`, {
         headers: {
-          "x-employee-id": id,
+          "Authorization": `Bearer ${token}`,
         },
       });
+      if (response.status === 401) {
+        handleLogout();
+        return;
+      }
       if (!response.ok) {
         throw new Error("Không thể tải dữ liệu bảng điều khiển");
       }
@@ -93,9 +100,13 @@ function App() {
         // Fetch dashboard data immediately after login with cache-busting
         const dashboardResponse = await fetch(`/api/dashboard?t=${Date.now()}`, {
           headers: {
-            "x-employee-id": data.user.employeeId,
+            "Authorization": `Bearer ${data.sessionToken}`,
           },
         });
+        if (dashboardResponse.status === 401) {
+          handleLogout();
+          return;
+        }
         const dashboardJson = await dashboardResponse.json();
 
         if (!dashboardResponse.ok || !dashboardJson.success) {
@@ -167,9 +178,13 @@ function App() {
           // Fetch dashboard data immediately after login with cache-busting
           const dashboardResponse = await fetch(`/api/dashboard?t=${Date.now()}`, {
             headers: {
-              "x-employee-id": data.user.employeeId,
+              "Authorization": `Bearer ${data.sessionToken}`,
             },
           });
+          if (dashboardResponse.status === 401) {
+            handleLogout();
+            return;
+          }
           const dashboardJson = await dashboardResponse.json();
 
           if (!dashboardResponse.ok || !dashboardJson.success) {

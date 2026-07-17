@@ -267,12 +267,19 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
     useEffect(() => {
         if (activeTab === "timekeeping" && !timekeepingData && user.employeeId) {
             setLoadingTimekeeping(true);
+            const token = localStorage.getItem("sessionToken");
             fetch("/api/timekeeping", {
                 headers: {
-                    "x-employee-id": user.employeeId,
+                    "Authorization": `Bearer ${token}`,
                 },
             })
-                .then((res) => res.json())
+                .then((res) => {
+                    if (res.status === 401) {
+                        onLogout();
+                        throw new Error("Session expired");
+                    }
+                    return res.json();
+                })
                 .then((data) => {
                     if (data.success) {
                         setTimekeepingData(data);
@@ -284,7 +291,7 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
                 .catch((err) => console.error("Error fetching timekeeping:", err))
                 .finally(() => setLoadingTimekeeping(false));
         }
-    }, [activeTab, timekeepingData, user.employeeId]);
+    }, [activeTab, timekeepingData, user.employeeId, onLogout]);
 
     /**
      * Fetch Payslips List
@@ -293,12 +300,19 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
     useEffect(() => {
         if (activeTab === "payslip" && !payslips && user.employeeId) {
             setLoadingPayslips(true);
+            const token = localStorage.getItem("sessionToken");
             fetch("/api/payslips", {
                 headers: {
-                    "x-employee-id": user.employeeId,
+                    "Authorization": `Bearer ${token}`,
                 },
             })
-                .then((res) => res.json())
+                .then((res) => {
+                    if (res.status === 401) {
+                        onLogout();
+                        throw new Error("Session expired");
+                    }
+                    return res.json();
+                })
                 .then((data) => {
                     if (data.success) {
                         setPayslips(data.payslips);
@@ -307,7 +321,7 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
                 .catch((err) => console.error("Error fetching payslips:", err))
                 .finally(() => setLoadingPayslips(false));
         }
-    }, [activeTab, payslips, user.employeeId]);
+    }, [activeTab, payslips, user.employeeId, onLogout]);
 
     /**
      * Fetch Payslip Detail
@@ -316,12 +330,19 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
     useEffect(() => {
         if (selectedPayslipId && user.employeeId) {
             setLoadingPayslipDetail(true);
+            const token = localStorage.getItem("sessionToken");
             fetch(`/api/payslips/${selectedPayslipId}`, {
                 headers: {
-                    "x-employee-id": user.employeeId,
+                    "Authorization": `Bearer ${token}`,
                 },
             })
-                .then((res) => res.json())
+                .then((res) => {
+                    if (res.status === 401) {
+                        onLogout();
+                        throw new Error("Session expired");
+                    }
+                    return res.json();
+                })
                 .then((data) => {
                     if (data.success) {
                         setPayslipDetail(data.payslip);
@@ -332,7 +353,7 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
         } else {
             setPayslipDetail(null);
         }
-    }, [selectedPayslipId, user.employeeId]);
+    }, [selectedPayslipId, user.employeeId, onLogout]);
 
     /**
      * Fetch Requests List
@@ -341,12 +362,19 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
     useEffect(() => {
         if (activeTab === "requests" && !requests && user.employeeId) {
             setLoadingRequests(true);
+            const token = localStorage.getItem("sessionToken");
             fetch("/api/requests", {
                 headers: {
-                    "x-employee-id": user.employeeId,
+                    "Authorization": `Bearer ${token}`,
                 },
             })
-                .then((res) => res.json())
+                .then((res) => {
+                    if (res.status === 401) {
+                        onLogout();
+                        throw new Error("Session expired");
+                    }
+                    return res.json();
+                })
                 .then((data) => {
                     if (data.success) {
                         setRequests(data.requests);
@@ -355,7 +383,7 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
                 .catch((err) => console.error("Error fetching requests:", err))
                 .finally(() => setLoadingRequests(false));
         }
-    }, [activeTab, requests, user.employeeId]);
+    }, [activeTab, requests, user.employeeId, onLogout]);
 
     // ================= EVENT HANDLERS =================
 
@@ -370,11 +398,12 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
             return;
         }
         setSubmittingRequest(true);
+        const token = localStorage.getItem("sessionToken");
         fetch("/api/requests", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "x-employee-id": user.employeeId,
+                "Authorization": `Bearer ${token}`,
             },
             body: JSON.stringify({
                 type: requestType,
@@ -382,7 +411,13 @@ export default function DashboardPage({ data, user = {}, onLogout }) {
                 reason: requestReason,
             }),
         })
-            .then((res) => res.json())
+            .then((res) => {
+                if (res.status === 401) {
+                    onLogout();
+                    throw new Error("Session expired");
+                }
+                return res.json();
+            })
             .then((data) => {
                 if (data.success) {
                     setRequests((prev) => [data.request, ...(prev || [])]);
