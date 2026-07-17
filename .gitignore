@@ -27,3 +27,8 @@ frontend/dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test Tokens and Debug Files
+token.txt
+backend/token.txt
+backend/response_debug.txt
