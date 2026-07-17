@@ -223,7 +223,7 @@ function writeDb(data) {
     }
 }
 
-const TIMEOUT_MS = 1500;
+const TIMEOUT_MS = 5000;
 
 function withTimeout(promise) {
     return Promise.race([
@@ -233,8 +233,11 @@ function withTimeout(promise) {
 }
 
 function handleFirebaseError(err, operationName) {
-    console.error(`Firebase ${operationName} failed, disabling Firebase:`, err.message);
-    useFirebase = false;
+    console.error(`Firebase ${operationName} failed:`, err.message);
+    if (!process.env.VERCEL) {
+        console.log("Disabling Firebase (falling back to local JSON)...");
+        useFirebase = false;
+    }
 }
 
 // Seed Firestore with initial data if empty
@@ -383,6 +386,7 @@ export const db = {
                 return;
             } catch (err) {
                 handleFirebaseError(err, "addRequest");
+                if (process.env.VERCEL) throw err;
             }
         }
         const data = readDb();
@@ -425,6 +429,7 @@ export const db = {
                 return;
             } catch (err) {
                 handleFirebaseError(err, "saveCredential");
+                if (process.env.VERCEL) throw err;
             }
         }
         const data = readDb();
@@ -446,6 +451,7 @@ export const db = {
                 return;
             } catch (err) {
                 handleFirebaseError(err, "deleteCredentialsForEmployee");
+                if (process.env.VERCEL) throw err;
             }
         }
         const data = readDb();
@@ -473,6 +479,7 @@ export const db = {
                 return;
             } catch (err) {
                 handleFirebaseError(err, "saveEmployee");
+                if (process.env.VERCEL) throw err;
             }
         }
         const data = readDb();
@@ -497,6 +504,7 @@ export const db = {
                 return;
             } catch (err) {
                 handleFirebaseError(err, "deleteEmployee");
+                if (process.env.VERCEL) throw err;
             }
         }
         const data = readDb();

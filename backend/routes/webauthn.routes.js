@@ -137,14 +137,17 @@ router.post("/api/auth/webauthn/register-verify", requireSession, async (req, re
  */
 router.post("/api/auth/webauthn/unregister", requireSession, async (req, res) => {
     const empId = req.employeeId;
-    await db.deleteCredentialsForEmployee(empId);
-
-    console.log(`Unregistered biometric credentials for employee ${empId}`);
-
-    return res.status(200).json({
-        success: true,
-        message: "Đã tắt đăng nhập bằng sinh trắc học thành công!",
-    });
+    try {
+        await db.deleteCredentialsForEmployee(empId);
+        console.log(`Unregistered biometric credentials for employee ${empId}`);
+        return res.status(200).json({
+            success: true,
+            message: "Đã tắt đăng nhập bằng sinh trắc học thành công!",
+        });
+    } catch (err) {
+        console.error("Error unregistering biometrics:", err);
+        return res.status(500).json({ success: false, message: "Không thể lưu dữ liệu, vui lòng thử lại sau" });
+    }
 });
 
 /**

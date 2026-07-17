@@ -236,22 +236,27 @@ router.post("/api/requests", requireSession, async (req, res) => {
         });
     }
 
-    const newRequest = {
-        id: (await db.getRequests(empId)).length + 1,
-        type,
-        details,
-        reason,
-        status: "Chờ duyệt",
-        createdAt: new Date().toLocaleDateString("vi-VN"),
-    };
+    try {
+        const newRequest = {
+            id: (await db.getRequests(empId)).length + 1,
+            type,
+            details,
+            reason,
+            status: "Chờ duyệt",
+            createdAt: new Date().toLocaleDateString("vi-VN"),
+        };
 
-    await db.addRequest(empId, newRequest);
+        await db.addRequest(empId, newRequest);
 
-    return res.status(201).json({
-        success: true,
-        message: "Tạo đơn thành công!",
-        request: newRequest,
-    });
+        return res.status(201).json({
+            success: true,
+            message: "Tạo đơn thành công!",
+            request: newRequest,
+        });
+    } catch (err) {
+        console.error("Error creating request:", err);
+        return res.status(500).json({ success: false, message: "Không thể lưu dữ liệu, vui lòng thử lại sau" });
+    }
 });
 
 export default router;
